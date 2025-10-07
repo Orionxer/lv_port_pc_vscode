@@ -48,7 +48,7 @@ vcpkg --version
 ```sh
 vcpkg install sdl2:x64-mingw-static
 ```
-则安装好的SDL2的路径应该是`D:\vcpkg\installed\x64-mingw-static\share\sdl2`
+则安装好的SDL2的路径应该是`D:\vcpkg\installed\x64-mingw-static\share\sdl2`，或者根据自己的实际安装的路径修改CMakeLists.txt中`set(SDL2_PATH D:/vcpkg/installed/x64-mingw-static/share/sdl2)`这一行
 
 ## 编译
 创建并进入build目录
@@ -70,7 +70,8 @@ cd ../bin; ./main.exe
 ```
 
 ## 说明
-默认运行了Gui Guider的Demo: SmartAppliance, 其中`src`目录下的`custome`和`generated`目录为Gui Guider导出的代码，详细导出步骤与CMakefile说明参考博客[TODO]()
+默认运行了Gui Guider的Demo: SmartAppliance, 其中`src`目录下的`custome`和`generated`目录为Gui Guider导出的代码，详细导出步骤与CMakeFile说明参考博客[LVGL9-移植](https://orionxer.github.io/blog/2025/10/03/lvgl-porting/)
+
 `src`目录结构如下
 ```sh
 src/
