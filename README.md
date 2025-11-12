@@ -83,3 +83,30 @@ src/
 ├── main.c
 └── mouse_cursor_icon.c
 ```
+
+# Linux环境
+## 安装环境
+```sh
+sudo apt install -y build-essential cmake git libsdl2-dev
+```
+## 下载项目
+```sh
+git clone --recursive https://github.com/orionxer/lv_port_pc_vscode
+```
+## 编译
+创建并进入build目录
+```sh
+mkdir build && cd build
+```
+生成Makefile
+```sh
+cmake -G "Unix Makefiles" ..
+```
+编译项目
+```sh
+make -j16
+```
+## 运行
+```sh
+cd ../bin; ./main
+```
