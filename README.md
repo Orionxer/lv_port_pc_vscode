@@ -1,4 +1,4 @@
-# LVGL9.4 + Gui Guider 移植 (Windows)
+# LVGL9.4 + Gui Guider 移植 (Windows/Linux)
 
 > 本项目基于LVGL官方仓库 [lv_port_pc_vscode](https://github.com/lvgl/lv_port_pc_vscode) Fork，实现了在Windows下模拟LVGL 9.4.0的运行环境，并将Gui Guider的Demo: SmartAppliance移植到该环境中运行，其余Demo同理。
 
