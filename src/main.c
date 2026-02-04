@@ -53,7 +53,7 @@
 /**********************
  *   GLOBAL FUNCTIONS
  **********************/
-void drm_hal_init(uint32_t hor_res, uint32_t ver_res)
+void drm_hal_init()
 {
 	/* DRM device node */
 	const char *device = "/dev/dri/card0";
@@ -76,13 +76,13 @@ int main(int argc, char **argv)
 	lv_init();
 
 	/*Initialize the HAL (display, input devices, tick) for LVGL*/
-	drm_hal_init(480, 800);
+	drm_hal_init();
 
 	/* Run the default demo */
 	/* To try a different demo or example, replace this with one of: */
 	lv_demo_benchmark();
-	/* - lv_demo_stress(); */
-	/* - lv_example_label_1(); */
+	// lv_demo_stress();
+	// lv_demo_music();
 	/* - etc. */
 	// setup_ui(&guider_ui);
 	// events_init(&guider_ui);
