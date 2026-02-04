@@ -16,6 +16,11 @@ include_directories(
     /sdk/media/libdrm/out/include
     )
 
+# RGA 头文件路径
+include_directories(
+    /sdk/media/rga/out/include
+)
+
 # 添加 LVGL 子目录
 add_subdirectory(lvgl)
 include_directories(${PROJECT_SOURCE_DIR})
@@ -37,6 +42,10 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 set(LIBDRM_PATH "/sdk/media/libdrm/libdrm-2.4.120-aarch64-rockchip1240-linux-gnu")
 link_directories(${LIBDRM_PATH}/lib)
 
+# RGA库路径
+set(RGA_PATH "/sdk/media/rga/out")
+link_directories(${RGA_PATH}/lib)
+
 # 链接库
 target_link_libraries(${PROJECT_NAME}
     lvgl::lvgl
@@ -44,4 +53,5 @@ target_link_libraries(${PROJECT_NAME}
     m
     rt
     ${LIBDRM_PATH}/lib/libdrm.so
+    ${RGA_PATH}/lib/librga.a
 )

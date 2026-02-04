@@ -23,6 +23,8 @@
 #include "lvgl/examples/lv_examples.h"
 #include "lvgl/demos/lv_demos.h"
 
+#include <rga/im2d.h>
+#include <rga/RgaApi.h>
 
 #include "hal/hal.h"
 
@@ -65,13 +67,31 @@ void drm_hal_init()
 	lv_linux_drm_set_file(disp, device, -1);
 }
 
+void rga_test(void)
+{
+    printf("---------- RGA INFO START ----------\n");
+    // 尝试初始化 RGA (尽管新版本可能不需要，但作为检测很好)
+    int ret = c_RkRgaInit();
+    if (ret != 0) {
+        printf("RGA init failed! ret=%d\n", ret);
+    } else {
+        printf("RGA init success!\n");
+    }
+
+    // 打印版本信息（来自 im2d_common.h）
+	printf("%s", querystring(RGA_ALL));
+    c_RkRgaDeInit();
+    printf("----------- RGA INFO END -----------\n");
+}
+
 #if LV_USE_OS != LV_OS_FREERTOS
 
 int main(int argc, char **argv)
 {
 	(void)argc; /*Unused*/
 	(void)argv; /*Unused*/
-
+	rga_test();
+	return 0;
 	/*Initialize LVGL*/
 	lv_init();
 
@@ -86,8 +106,8 @@ int main(int argc, char **argv)
 
 	/* Run the default demo */
 	/* To try a different demo or example, replace this with one of: */
-	lv_demo_benchmark();
-	// lv_demo_stress();
+	// lv_demo_benchmark();
+	lv_demo_stress();
 	// lv_demo_music();
 	// lv_demo_widgets();
 	/* - etc. */
