@@ -123,15 +123,15 @@ int main(int argc, char **argv)
 		lv_indev_set_display(indev, lv_display_get_default());
 	}
 	// return 0;
-#if 0
+#if 1 // 色深以及是否加速的信息提示
 	rgb_depth_info();
 	acclerate_info();
 #endif
 	/* Run the default demo */
 	/* To try a different demo or example, replace this with one of: */
-	// lv_demo_benchmark();
+	lv_demo_benchmark();
 	// lv_demo_stress();
-	lv_demo_music();
+	// lv_demo_music();
 	// lv_demo_widgets();
 	// lv_demo_keypad_encoder();
 	/* - lv_example_label_1(); */

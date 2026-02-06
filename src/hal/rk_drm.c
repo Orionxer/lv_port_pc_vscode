@@ -104,10 +104,6 @@ typedef struct {
     int rga_bo_fd;                 /* RGA buffer的文件描述符 */
     uint8_t *rga_buf_ptr;          /* RGA缓冲区虚拟地址 */
     size_t rga_buf_size;           /* RGA缓冲区大小 */
-    bo_t bo_src;                    /* RGA源图像信息 */
-    bo_t bo_dst;                    /* RGA目标图像信息 */
-    rga_info_t rga_src_info;        /* RGA源图像结构体 */
-    rga_info_t rga_dst_info;        /* RGA目标图像结构体 */
 } drm_dev_t;
 
 /**********************
@@ -161,11 +157,11 @@ lv_display_t * drm_create(void)
 }
 
 // 正确的RGA加速示例
+#if 0
 void rga_test(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *src_ptr, uint8_t *dst_ptr)
 {
     // printf("######################################################\n"); 
     int ret = 0;
-#if 0
 	bo_t bo_src, bo_dst;
 
     // 已经初始化过了
@@ -182,12 +178,8 @@ void rga_test(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *src
 	/********** map buffer_address to userspace **********/
 	c_RkRgaGetMmap(&bo_src);
 	c_RkRgaGetMmap(&bo_dst);
-#endif
 
 	/********** read data from *.bin file **********/   
-#if 0
-    get_buf_from_file(bo_src.ptr, format, width, height, 0);
-#else
     // int bytes_per_pixel = 4;
     // memset(bo_src.ptr,0x55,bytes_per_pixel*width*height);
     if(src_ptr) {
@@ -195,7 +187,6 @@ void rga_test(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *src
     } else {
         return;
     }
-#endif
 
     // ****** 关键修复：打印DRM返回的实际pitch ******
     printf("bo_src.pitch=%zu bytes, bo_dst.pitch=%zu bytes\n", drm_dev->bo_src.pitch, drm_dev->bo_dst.pitch);
@@ -271,6 +262,7 @@ void rga_test(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *src
     }
     // printf("######################################################\n"); 
 }
+#endif
 
 #if LV_USE_LINUX_DRM_RGA_FLUSH
 void rga_flush(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *src_ptr, uint8_t *dst_ptr)
@@ -345,11 +337,8 @@ void rk_drm_init(void)
     c_RkRgaInit();  // 初始化RGA
     printf("%s\n", querystring(RGA_EXPECTED));  // 打印版本信息
 #endif
-#if 0 // 正确的RGA加速示例
-    rga_test(480, 800, RK_FORMAT_RGB_565);
-    // 主动结束，RGA测试完成删除
-    return;
-#endif
+    // 可在此处执行rga测试
+    // rga_test(...);
     // 参考链接 https://docs.lvgl.io/master/integration/embedded_linux/drivers/drm.html
     /* DRM device node */
     const char *device = "/dev/dri/card0";
@@ -361,65 +350,6 @@ void rk_drm_init(void)
     /* The 2nd argument is the DRM device path */
     /* The 3rd argument is the connector_id (-1 = auto-select first available) */
     lv_linux_drm_set_file(disp, device, -1);
-#if LV_USE_LINUX_DRM_RGA
-    // 初始化bo_src和bo_dst
-    drm_dev_t * drm_dev = (drm_dev_t *)lv_display_get_driver_data(disp);
-    // ! 即便是RGB565格式，RGA分配buffer时也必须使用32位对齐，否则RGA会报错
-    int bits = 32;
-    // printf("rga_test: width=%d height=%d format=%d bits=%d\n", width, height, format, bits);
-    c_RkRgaGetAllocBuffer(&drm_dev->bo_src, 480, 800, bits);
-    c_RkRgaGetAllocBuffer(&drm_dev->bo_dst, 480, 800, bits);
-
-    /********** map buffer_address to userspace **********/
-    c_RkRgaGetMmap(&drm_dev->bo_src);
-    c_RkRgaGetMmap(&drm_dev->bo_dst);
-    rga_info_t *src = &drm_dev->rga_src_info;
-    rga_info_t *dst = &drm_dev->rga_dst_info;
-    int ret = 0;
-    memset(src, 0, sizeof(rga_info_t));
-    src->fd = -1;
-    src->mmuFlag = 1;
-    
-    memset(dst, 0, sizeof(rga_info_t));
-    dst->fd = -1;
-    dst->mmuFlag = 1;
-    
-    /********** get src_Fd **********/
-    ret = c_RkRgaGetBufferFd(&drm_dev->bo_src, &src->fd);
-    printf("src.fd =%d \n",src->fd);
-    if (ret) {
-        printf("rgaGetsrcFd fail : %s\n", strerror(errno));
-    }
-    /********** get dst_Fd **********/
-    ret = c_RkRgaGetBufferFd(&drm_dev->bo_dst, &dst->fd);
-    printf("dst.fd =%d \n",dst->fd);
-    if (ret) {
-        printf("rgaGetdstFd error : %s\n", strerror(errno));
-    }
-    /********** if not fd, try to check phyAddr and virAddr **************/
-    if(src->fd <= 0|| dst->fd <= 0)
-    {
-    /********** check phyAddr and virAddr ,if none to get virAddr **********/
-        if (( src->phyAddr != 0 || src->virAddr != 0 ) || src->hnd != 0 ){
-            //ret = RkRgaGetHandleMapAddress( gbs->handle, &src->virAddr );
-            printf("src.virAddr =%p\n",src->virAddr);
-            if(!src->virAddr){
-                printf("err! src has not fd and address for render ,Stop!\n");
-                return;
-            }
-        }
-        
-        /********** check phyAddr and virAddr ,if none to get virAddr **********/
-        if (( dst->phyAddr != 0 || dst->virAddr != 0 ) || dst->hnd != 0 ){
-            //ret = RkRgaGetHandleMapAddress( gbd->handle, &dst->virAddr );
-            printf("dst.virAddr =%p\n",dst->virAddr);
-            if(!dst->virAddr){
-                printf("err! dst has not fd and address for render ,Stop!\n");
-                return;
-            }		
-        }
-    }
-#endif
 }
 
 void rk_drm_deinit(void)
@@ -1242,9 +1172,6 @@ static void drm_flush(lv_display_t * disp, const lv_area_t * area, uint8_t * px_
     LV_ASSERT(drm_buf != NULL);
 
 #if LV_USE_LINUX_DRM_RGA
-    /* 暂时禁用RGA，使用软件拷贝 */
-    /* TODO: 修复RGA配置后重新启用 */
-
     /* 获取需要更新的区域 */
     int32_t x1 = area->x1;
     int32_t y1 = area->y1;
