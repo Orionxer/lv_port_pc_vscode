@@ -114,14 +114,26 @@ int main(int argc, char **argv)
 
 	/*Initialize the HAL (display, input devices, tick) for LVGL*/
 	rk_drm_init();
+
+	// ? 需要确保 lv_conf.h 中 LV_USE_EVDEV 已启用
+	/* Initialize touch input */
+	lv_indev_t *indev = lv_evdev_create(LV_INDEV_TYPE_POINTER, "/dev/input/event2");
+	if (indev)
+	{
+		lv_indev_set_display(indev, lv_display_get_default());
+	}
 	// return 0;
+#if 0
 	rgb_depth_info();
 	acclerate_info();
+#endif
 	/* Run the default demo */
 	/* To try a different demo or example, replace this with one of: */
-	lv_demo_benchmark();
+	// lv_demo_benchmark();
 	// lv_demo_stress();
-	// lv_demo_music();
+	lv_demo_music();
+	// lv_demo_widgets();
+	// lv_demo_keypad_encoder();
 	/* - lv_example_label_1(); */
 	/* - etc. */
 	// setup_ui(&guider_ui);
