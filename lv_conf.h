@@ -26,7 +26,7 @@
  *====================*/
 
 /** Color depth: 1 (I1), 8 (L8), 16 (RGB565), 24 (RGB888), 32 (XRGB8888) */
-#define LV_COLOR_DEPTH 16
+#define LV_COLOR_DEPTH 32
 
 /*=========================
    STDLIB WRAPPER SETTINGS
@@ -106,7 +106,7 @@
  * - LV_OS_MQX
  * - LV_OS_SDL2
  * - LV_OS_CUSTOM */
-#define LV_USE_OS   LV_OS_NONE
+#define LV_USE_OS   LV_OS_PTHREAD
 
 #if LV_USE_OS == LV_OS_CUSTOM
     #define LV_OS_CUSTOM_INCLUDE <stdint.h>
@@ -191,7 +191,7 @@
     /** Set number of draw units.
      *  - > 1 requires operating system to be enabled in `LV_USE_OS`.
      *  - > 1 means multiple threads will render the screen in parallel. */
-    #define LV_DRAW_SW_DRAW_UNIT_CNT    1
+    #define LV_DRAW_SW_DRAW_UNIT_CNT    4
 
     /** Use Arm-2D to accelerate software (sw) rendering. */
     #define LV_USE_DRAW_ARM2D_SYNC      0
@@ -1303,7 +1303,13 @@
      * NOTE: Set to 1 when building on Rockchip platform with librga installed */
     #define LV_USE_LINUX_DRM_RGA 1  /* RGA acceleration enabled */
 
-    #define LV_USE_LINUX_DRM_RGA_FLUSH 0
+    #define LV_USE_LINUX_DRM_RGA_FLUSH 1
+
+    /* Enable LVGL software rotation handling in DRM flush */
+    #define LV_USE_LINUX_DRM_SW_ROTATE 0
+
+    /* Enable RGA hardware rotation in DRM flush */
+    #define LV_USE_LINUX_DRM_RGA_HW_ROTATE 1
 #endif
 
 /** Interface for TFT_eSPI */

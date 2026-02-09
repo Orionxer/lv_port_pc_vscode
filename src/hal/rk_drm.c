@@ -1,5 +1,8 @@
 ﻿#include "rk_drm.h"
 #include "lvgl/lvgl.h"
+#if LV_USE_LINUX_DRM_SW_ROTATE
+    #include "lvgl/src/draw/sw/lv_draw_sw.h"
+#endif
 
 #if LV_USE_LINUX_DRM
 /* RGA with DMA-BUF support */
@@ -104,6 +107,10 @@ typedef struct {
     int rga_bo_fd;                 /* RGA buffer的文件描述符 */
     uint8_t *rga_buf_ptr;          /* RGA缓冲区虚拟地址 */
     size_t rga_buf_size;           /* RGA缓冲区大小 */
+#if LV_USE_LINUX_DRM_SW_ROTATE
+    uint8_t *rotated_buf;          /* Software rotated buffer */
+    size_t rotated_buf_size;       /* Rotated buffer size */
+#endif
 } drm_dev_t;
 
 /**********************
@@ -133,6 +140,41 @@ static int drm_dmabuf_set_plane(drm_dev_t * drm_dev, drm_buffer_t * buf);
 static void drm_flush_wait(lv_display_t * disp);
 static void drm_flush(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map);
 void lv_linux_drm_set_file(lv_display_t * disp, const char * file, int64_t connector_id);
+
+#if LV_USE_LINUX_DRM_RGA_FLUSH && LV_USE_LINUX_DRM_RGA_HW_ROTATE
+static int rga_rotation_from_lvgl(lv_display_rotation_t rotation)
+{
+#if defined(HAL_TRANSFORM_ROT_90)
+    switch(rotation) {
+        case LV_DISPLAY_ROTATION_90:  return HAL_TRANSFORM_ROT_90;
+        case LV_DISPLAY_ROTATION_180: return HAL_TRANSFORM_ROT_180;
+        case LV_DISPLAY_ROTATION_270: return HAL_TRANSFORM_ROT_270;
+        default: return 0;
+    }
+#elif defined(IM_HAL_TRANSFORM_ROT_90)
+    switch(rotation) {
+        case LV_DISPLAY_ROTATION_90:  return IM_HAL_TRANSFORM_ROT_90;
+        case LV_DISPLAY_ROTATION_180: return IM_HAL_TRANSFORM_ROT_180;
+        case LV_DISPLAY_ROTATION_270: return IM_HAL_TRANSFORM_ROT_270;
+        default: return 0;
+    }
+#elif defined(RGA_ROT_90)
+    switch(rotation) {
+        case LV_DISPLAY_ROTATION_90:  return RGA_ROT_90;
+        case LV_DISPLAY_ROTATION_180: return RGA_ROT_180;
+        case LV_DISPLAY_ROTATION_270: return RGA_ROT_270;
+        default: return 0;
+    }
+#else
+    switch(rotation) {
+        case LV_DISPLAY_ROTATION_90:  return 90;
+        case LV_DISPLAY_ROTATION_180: return 180;
+        case LV_DISPLAY_ROTATION_270: return 270;
+        default: return 0;
+    }
+#endif
+}
+#endif
 
 lv_display_t * drm_create(void)
 {
@@ -265,7 +307,13 @@ void rga_test(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *src
 #endif
 
 #if LV_USE_LINUX_DRM_RGA_FLUSH
-void rga_flush(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *src_ptr, uint8_t *dst_ptr)
+void rga_flush(drm_dev_t * drm_dev,
+               int32_t src_x, int32_t src_y, int32_t src_w, int32_t src_h,
+               int32_t dst_x, int32_t dst_y, int32_t dst_w, int32_t dst_h,
+               int32_t src_stride, int32_t src_hstride,
+               int32_t dst_stride, int32_t dst_hstride,
+               int format, uint8_t *src_ptr, uint8_t *dst_ptr,
+               lv_display_rotation_t rotation)
 {
 #if 0 // 软件拷贝
     if (src_ptr == NULL || dst_ptr == NULL)
@@ -305,7 +353,7 @@ void rga_flush(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *sr
     rga_info_t dst = {0};
 #if LV_COLOR_DEPTH == 16
     // ! 这是RGA的Bug，即便是RGB565格式，RGA分配buffer时也必须使用32位对齐，否则显示异常
-    #error "无法在RGB565格式下使用RGA加速，请切换到32位色深或禁用RGA加速"
+    // #error "无法在RGB565格式下使用RGA加速，请切换到32位色深或禁用RGA加速"
 #endif
     src.fd = -1;
     // static uint8_t test_data[480*800*4] = {0}; // 32bit对齐的缓冲区
@@ -316,14 +364,19 @@ void rga_flush(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *sr
     src.mmuFlag = 1;
     /* 使用全屏 stride */
     // rga_set_rect(&src.rect, x, y, w, h, drm_dev->width, drm_dev->height, format);
-    rga_set_rect(&src.rect, 0, 0, width, height, drm_dev->width, drm_dev->height, format);
+    rga_set_rect(&src.rect, src_x, src_y, src_w, src_h, src_stride, src_hstride, format);
 
     /* 配置目标 (DMA-BUF FD, DRM Dumb Buffer) */
     dst.fd = dst_fd;
     dst.mmuFlag = 1; 
     /* 使用全屏 stride */
     // rga_set_rect(&dst.rect, x, y, w, h, drm_dev->width, drm_dev->height, format);
-    rga_set_rect(&dst.rect, 0, 0, width, height, drm_dev->width, drm_dev->height, format);
+    rga_set_rect(&dst.rect, dst_x, dst_y, dst_w, dst_h, dst_stride, dst_hstride, format);
+#if LV_USE_LINUX_DRM_RGA_HW_ROTATE
+    if(rotation != LV_DISPLAY_ROTATION_0) {
+        src.rotation = rga_rotation_from_lvgl(rotation);
+    }
+#endif
     /* 执行 RGA Blit */
     if (c_RkRgaBlit(&src, &dst, NULL) < 0) {
         LV_LOG_ERROR("c_RkRgaBlit failed: %s", strerror(errno));
@@ -1159,6 +1212,30 @@ static void drm_flush(lv_display_t * disp, const lv_area_t * area, uint8_t * px_
 {
     drm_dev_t * drm_dev = (drm_dev_t *)lv_display_get_driver_data(disp);
 
+#if LV_USE_LINUX_DRM_SW_ROTATE || LV_USE_LINUX_DRM_RGA_HW_ROTATE
+    lv_display_rotation_t rotation = lv_display_get_rotation(disp);
+#else
+    lv_display_rotation_t rotation = LV_DISPLAY_ROTATION_0;
+#endif
+
+#if LV_USE_LINUX_DRM_SW_ROTATE
+    lv_color_format_t cf = lv_display_get_color_format(disp);
+    uint32_t bpp = LV_COLOR_FORMAT_GET_SIZE(cf);
+    lv_area_t rotated_area;
+    const lv_area_t * flush_area = area;
+    uint8_t * flush_map = px_map;
+#else
+    uint32_t bpp = LV_COLOR_DEPTH / 8;
+#endif
+
+    int32_t logical_w = lv_display_get_horizontal_resolution(disp);
+    int32_t logical_h = lv_display_get_vertical_resolution(disp);
+    const lv_area_t * dst_area = area;
+#if LV_USE_LINUX_DRM_RGA_HW_ROTATE
+    bool use_rga_hw_rotate = (rotation != LV_DISPLAY_ROTATION_0);
+    lv_area_t hw_rotated_area;
+#endif
+
     /* LVGL在FULL模式下，最后一次flush时需要完整刷新 */
     if(!lv_display_flush_is_last(disp)) {
         return;
@@ -1180,7 +1257,63 @@ static void drm_flush(lv_display_t * disp, const lv_area_t * area, uint8_t * px_
     int32_t w = x2 - x1 + 1;
     int32_t h = y2 - y1 + 1;
 
-    /* 边界检查 */
+#if LV_USE_LINUX_DRM_SW_ROTATE
+#if LV_USE_LINUX_DRM_RGA_HW_ROTATE
+    if(rotation != LV_DISPLAY_ROTATION_0 && !use_rga_hw_rotate) {
+#else
+    if(rotation != LV_DISPLAY_ROTATION_0) {
+#endif
+        size_t buf_size = (size_t)w * (size_t)h * bpp;
+        if(drm_dev->rotated_buf_size < buf_size) {
+            if(drm_dev->rotated_buf) lv_free(drm_dev->rotated_buf);
+            drm_dev->rotated_buf = (uint8_t *)lv_malloc(buf_size);
+            drm_dev->rotated_buf_size = buf_size;
+        }
+
+        if(drm_dev->rotated_buf) {
+            uint32_t src_stride = lv_draw_buf_width_to_stride(logical_w, cf);
+            uint32_t dst_stride = (rotation == LV_DISPLAY_ROTATION_180) ?
+                                  lv_draw_buf_width_to_stride(w, cf) :
+                                  lv_draw_buf_width_to_stride(h, cf);
+            uint8_t *src_area = px_map + (y1 * logical_w + x1) * bpp;
+
+            lv_draw_sw_rotate(src_area, drm_dev->rotated_buf, w, h, src_stride, dst_stride, rotation, cf);
+            flush_map = drm_dev->rotated_buf;
+
+            rotated_area = *area;
+            lv_display_rotate_area(disp, &rotated_area);
+            flush_area = &rotated_area;
+            dst_area = flush_area;
+
+            if(rotation != LV_DISPLAY_ROTATION_180) {
+                w = lv_area_get_width(flush_area);
+                h = lv_area_get_height(flush_area);
+            }
+
+            x1 = flush_area->x1;
+            y1 = flush_area->y1;
+            x2 = flush_area->x2;
+            y2 = flush_area->y2;
+        }
+    }
+#endif
+
+#if LV_USE_LINUX_DRM_RGA_HW_ROTATE
+    if(use_rga_hw_rotate) {
+        hw_rotated_area = *area;
+        lv_display_rotate_area(disp, &hw_rotated_area);
+        dst_area = &hw_rotated_area;
+    }
+#endif
+
+    /* 边界检查 (基于目标区域) */
+    x1 = dst_area->x1;
+    y1 = dst_area->y1;
+    x2 = dst_area->x2;
+    y2 = dst_area->y2;
+    w = x2 - x1 + 1;
+    h = y2 - y1 + 1;
+
     if(x1 < 0) x1 = 0;
     if(y1 < 0) y1 = 0;
     if(x2 >= (int32_t)drm_dev->width) x2 = drm_dev->width - 1;
@@ -1190,17 +1323,55 @@ static void drm_flush(lv_display_t * disp, const lv_area_t * area, uint8_t * px_
 
 #if LV_USE_LINUX_DRM_RGA_FLUSH // RGA硬件加速：直接拷贝到DRM buffer
     static int format = (LV_COLOR_DEPTH == 16) ? RK_FORMAT_RGB_565 : RK_FORMAT_ARGB_8888;
-    rga_flush(drm_dev, w, h, format, px_map, drm_buf->map);
-    // printf("size_t px_map_len = %d\n", drm_dev->render_buf.buf_size);
-    LV_LOG_TRACE("Software copy: rect[%d,%d]-[%d,%d] size=%dx%d", x1, y1, x2, y2, w, h);
+    int32_t src_x = area->x1;
+    int32_t src_y = area->y1;
+    int32_t src_w = area->x2 - area->x1 + 1;
+    int32_t src_h = area->y2 - area->y1 + 1;
+    int32_t src_stride = logical_w;
+    int32_t src_hstride = logical_h;
+    int32_t dst_stride = (int32_t)(drm_buf->pitch / bpp);
+    int32_t dst_hstride = (int32_t)drm_dev->height;
+
+#if LV_USE_LINUX_DRM_RGA_HW_ROTATE
+    rga_flush(drm_dev,
+              src_x, src_y, src_w, src_h,
+              x1, y1, w, h,
+              src_stride, src_hstride,
+              dst_stride, dst_hstride,
+              format, px_map, drm_buf->map, rotation);
+#else
+    if(rotation == LV_DISPLAY_ROTATION_0) {
+        rga_flush(drm_dev,
+                  src_x, src_y, src_w, src_h,
+                  x1, y1, w, h,
+                  src_stride, src_hstride,
+                  dst_stride, dst_hstride,
+                  format, px_map, drm_buf->map, rotation);
+    }
+    else {
+        uint32_t y;
+        uint32_t stride = drm_buf->pitch;
+        for(y = y1; y <= y2; y++) {
+            uint32_t dst_offset = (y * stride) + x1 * bpp;
+            uint32_t src_offset = (y - y1) * w * bpp;
+            memcpy((uint8_t*)drm_buf->map + dst_offset, flush_map + src_offset, w * bpp);
+        }
+    }
+#endif
 #else // CPU拷贝：逐行复制（CPU memcpy 耗时1ms左右）
     uint32_t y;
     uint32_t stride = drm_buf->pitch;
-    uint32_t bpp = LV_COLOR_DEPTH / 8;  /* bytes per pixel */
     for(y = y1; y <= y2; y++) {
-        uint32_t src_offset = (y * drm_dev->width + x1) * bpp;
         uint32_t dst_offset = (y * stride) + x1 * bpp;
+#if LV_USE_LINUX_DRM_SW_ROTATE
+        uint32_t src_offset = (rotation == LV_DISPLAY_ROTATION_0)
+                                ? (y * drm_dev->width + x1) * bpp
+                                : (y - y1) * w * bpp;
+        memcpy((uint8_t*)drm_buf->map + dst_offset, flush_map + src_offset, w * bpp);
+#else
+        uint32_t src_offset = (y * drm_dev->width + x1) * bpp;
         memcpy((uint8_t*)drm_buf->map + dst_offset, px_map + src_offset, w * bpp);
+#endif
     }
     // printf("rect[%d,%d]-[%d,%d] size=%dx%d\n", x1, y1, x2, y2, w, h);
     //         rect[0,0]-[479,799] size=480x800

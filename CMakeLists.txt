@@ -57,7 +57,7 @@ set(SOURCES
 )
 
 # 指定文件为 C++ 源文件 (避免编译错误)
-# set_source_files_properties(src/hal/rk_drm.c PROPERTIES LANGUAGE CXX)
+set_source_files_properties(src/hal/rk_drm.c PROPERTIES LANGUAGE CXX)
 
 # 可执行文件
 add_executable(${PROJECT_NAME} ${SOURCES})

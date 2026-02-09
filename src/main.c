@@ -44,9 +44,13 @@
  *  STATIC PROTOTYPES
  **********************/
 
+static void indev_read_cb_invert_xy(lv_indev_t * indev, lv_indev_data_t * data);
+
 /**********************
  *  STATIC VARIABLES
  **********************/
+
+static lv_indev_read_cb_t g_orig_read_cb = NULL;
 
 /**********************
  *      MACROS
@@ -57,6 +61,29 @@
  **********************/
 
 #if LV_USE_OS != LV_OS_FREERTOS
+
+static void indev_read_cb_invert_xy(lv_indev_t * indev, lv_indev_data_t * data)
+{
+	if(g_orig_read_cb == NULL) return;
+
+	g_orig_read_cb(indev, data);
+
+	lv_display_t * disp = lv_indev_get_display(indev);
+	if(disp == NULL) return;
+
+	int32_t w = lv_display_get_original_horizontal_resolution(disp);
+	int32_t h = lv_display_get_original_vertical_resolution(disp);
+
+	if(w <= 0 || h <= 0) return;
+
+	data->point.x = w - 1 - data->point.x;
+	data->point.y = h - 1 - data->point.y;
+
+	if(data->point.x < 0) data->point.x = 0;
+	if(data->point.y < 0) data->point.y = 0;
+	if(data->point.x >= w) data->point.x = w - 1;
+	if(data->point.y >= h) data->point.y = h - 1;
+}
 
 void acclerate_info(void)
 {
@@ -115,12 +142,21 @@ int main(int argc, char **argv)
 	/*Initialize the HAL (display, input devices, tick) for LVGL*/
 	rk_drm_init();
 
+	/* Software/RGA rotate display 90 degrees */
+#if LV_USE_LINUX_DRM_SW_ROTATE || LV_USE_LINUX_DRM_RGA_HW_ROTATE
+	lv_display_set_rotation(lv_display_get_default(), LV_DISPLAY_ROTATION_90);
+#endif
+
 	// ? 需要确保 lv_conf.h 中 LV_USE_EVDEV 已启用
 	/* Initialize touch input */
 	lv_indev_t *indev = lv_evdev_create(LV_INDEV_TYPE_POINTER, "/dev/input/event2");
 	if (indev)
 	{
 		lv_indev_set_display(indev, lv_display_get_default());
+		g_orig_read_cb = lv_indev_get_read_cb(indev);
+		if(g_orig_read_cb) {
+			lv_indev_set_read_cb(indev, indev_read_cb_invert_xy);
+		}
 	}
 	// return 0;
 #if 1 // 色深以及是否加速的信息提示

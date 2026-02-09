@@ -48,6 +48,9 @@ cmake .. && make -j16
 | ❌ 禁用 | 16 (RGB565)   | CPU | 31fps |
 | ❌ 禁用 | 32 (RGB565)   | CPU | 26fps |
 
+## 显示旋转说明
+已支持在DRM驱动下进行LVGL软件旋转，当前实现为90°旋转且显示正常。
+
 ## 参考链接
 
 - [LVGL官方的DRM教程](https://docs.lvgl.io/master/integration/embedded_linux/drivers/drm.html#using-drm-with-egl)
