@@ -1303,7 +1303,9 @@
      * NOTE: Set to 1 when building on Rockchip platform with librga installed */
     #define LV_USE_LINUX_DRM_RGA 1  /* RGA acceleration enabled */
 
-    #define LV_USE_LINUX_DRM_RGA_FLUSH 0
+    #define LV_USE_LINUX_DRM_RGA_FLUSH 1
+
+    #define LV_USE_LINUX_DRM_RGA_HW_ROTATE 1
 #endif
 
 /** Interface for TFT_eSPI */

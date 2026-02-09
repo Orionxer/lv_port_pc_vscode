@@ -20,4 +20,5 @@ sshpass -p luckfox scp ./build/lvgl_app aura:/app/lvgl
 echo "推送完成."
 # 运行
 echo "运行lvgl_app..."
-sshpass -p luckfox ssh aura "/app/lvgl/lvgl_app"
+# sshpass -p luckfox ssh aura "/app/lvgl/lvgl_app"
+timeout 1 sshpass -p luckfox ssh aura "/app/lvgl/lvgl_app"

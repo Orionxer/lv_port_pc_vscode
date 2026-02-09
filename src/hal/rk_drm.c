@@ -313,7 +313,8 @@ void rga_flush(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *sr
     rga_info_t dst = {0};
 #if LV_COLOR_DEPTH == 16
     // ! 这是RGA的Bug，即便是RGB565格式，RGA分配buffer时也必须使用32位对齐，否则显示异常
-    #error "无法在RGB565格式下使用RGA加速，请切换到32位色深或禁用RGA加速"
+    // ? 目前只有在泰山派RK3566出现该bug，RV1126B并未出现
+    // #error "无法在RGB565格式下使用RGA加速，请切换到32位色深或禁用RGA加速"
 #endif
     src.fd = -1;
     // static uint8_t test_data[480*800*4] = {0}; // 32bit对齐的缓冲区
@@ -322,6 +323,28 @@ void rga_flush(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *sr
     // RGA 参考工程路径 /home/orionxer/tspi/sdk/Release/external/linux-rga
     src.virAddr = src_ptr;
     src.mmuFlag = 1;
+#if LV_USE_LINUX_DRM_RGA_HW_ROTATE
+    // 在此处实现RGA旋转90度
+    /* 配置源 (Virtual Address, LVGL Render Buffer) */
+    src.rotation = HAL_TRANSFORM_ROT_270;
+    /* 交换宽/高后的逻辑宽度作为Stride (即 ver_res -> drm_dev->height) */
+    int stride = drm_dev->height; 
+    
+    rga_set_rect(&src.rect, 0, 0, width, height, stride, drm_dev->width, format);
+
+    /* 配置目标 (DMA-BUF FD, DRM Dumb Buffer) */
+    dst.fd = dst_fd;
+    dst.mmuFlag = 1; 
+    
+    /* 目标也是全屏物理分辨率: 800x1280 */
+    rga_set_rect(&dst.rect, 0, 0, drm_dev->width, drm_dev->height, drm_dev->width, drm_dev->height, format);
+    
+    /* 执行 RGA Blit */
+    if (c_RkRgaBlit(&src, &dst, NULL) < 0) {
+        LV_LOG_ERROR("c_RkRgaBlit failed: %s", strerror(errno));
+    }
+    
+#else
     /* 使用全屏 stride */
     // rga_set_rect(&src.rect, x, y, w, h, drm_dev->width, drm_dev->height, format);
     rga_set_rect(&src.rect, 0, 0, width, height, drm_dev->width, drm_dev->height, format);
@@ -336,6 +359,7 @@ void rga_flush(drm_dev_t * drm_dev, int width,int height,int format, uint8_t *sr
     if (c_RkRgaBlit(&src, &dst, NULL) < 0) {
         LV_LOG_ERROR("c_RkRgaBlit failed: %s", strerror(errno));
     }
+#endif
 #endif
 }
 #endif
@@ -1077,6 +1101,11 @@ void lv_linux_drm_set_file(lv_display_t * disp, const char * file, int64_t conne
     int32_t ver_res = drm_dev->height;
     int32_t width = drm_dev->mmWidth;
 #if LV_USE_LINUX_DRM_RGA
+#if LV_USE_LINUX_DRM_RGA_HW_ROTATE
+    int32_t tmp = hor_res;
+    hor_res = ver_res;
+    ver_res = tmp;
+#endif
     /* 设置分辨率 */
     lv_display_set_resolution(disp, hor_res, ver_res);
     /* 分配LVGL渲染缓冲区（用于非DIRECT模式） */
@@ -1253,16 +1282,26 @@ static void drm_flush(lv_display_t * disp, const lv_area_t * area, uint8_t * px_
     int32_t w = x2 - x1 + 1;
     int32_t h = y2 - y1 + 1;
 
-    /* 边界检查 */
+    /* 边界检查，使用逻辑分辨率 */
+    int32_t hor_res = lv_display_get_horizontal_resolution(disp);
+    int32_t ver_res = lv_display_get_vertical_resolution(disp);
     if(x1 < 0) x1 = 0;
     if(y1 < 0) y1 = 0;
-    if(x2 >= (int32_t)drm_dev->width) x2 = drm_dev->width - 1;
-    if(y2 >= (int32_t)drm_dev->height) y2 = drm_dev->height - 1;
+    if(x2 >= hor_res) x2 = hor_res - 1;
+    if(y2 >= ver_res) y2 = ver_res - 1;
     w = x2 - x1 + 1;
     h = y2 - y1 + 1;
 
 #if LV_USE_LINUX_DRM_RGA_FLUSH // RGA硬件加速：直接拷贝到DRM buffer
     static int format = (LV_COLOR_DEPTH == 16) ? RK_FORMAT_RGB_565 : RK_FORMAT_ARGB_8888;
+    /* 如果是HW Rotate，且由于截断导致非全屏，这里强制覆盖为逻辑全屏，防止拉伸 */
+#if LV_USE_LINUX_DRM_RGA_HW_ROTATE
+    if(w != hor_res || h != ver_res) {
+        LV_LOG_WARN("RGA Rotate: Force rect to full screen logic resolution %dx%d", hor_res, ver_res);
+        w = hor_res;
+        h = ver_res;
+    }
+#endif
     rga_flush(drm_dev, w, h, format, px_map, drm_buf->map);
     // printf("size_t px_map_len = %d\n", drm_dev->render_buf.buf_size);
     LV_LOG_TRACE("Software copy: rect[%d,%d]-[%d,%d] size=%dx%d", x1, y1, x2, y2, w, h);

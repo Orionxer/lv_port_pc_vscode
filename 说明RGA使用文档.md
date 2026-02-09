@@ -105,4 +105,4 @@ void rga_test(void)
 - **RGA SDK 路径**: `/sdk/media/rga`
 - **头文件**: `/sdk/media/rga/out/include`
 - **库文件**: `/sdk/media/rga/out/lib`
-- **示例代码**: `/sdk/media/rga/samples` (包含基础的 resize, copy, crop 等 demo)
+- **示例代码**: `/sdk/media/rga/rga` (包含基础的 resize, copy, crop 等 demo)
