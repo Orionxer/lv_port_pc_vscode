@@ -27,6 +27,7 @@
 #include <rga/RgaApi.h>
 
 #include "hal/hal.h"
+#include "hal/rk_drm.h"
 
 // #include "generated/gui_guider.h"
 // #include "generated/events_init.h"
@@ -55,34 +56,6 @@
 /**********************
  *   GLOBAL FUNCTIONS
  **********************/
-void drm_hal_init()
-{
-	/* DRM device node */
-	const char *device = "/dev/dri/card0";
-	/* Create a DRM display */
-    lv_display_t *disp = lv_linux_drm_create();
-	/* Set DRM device file and connector */
-	/* The 2nd argument is the DRM device path */
-	/* The 3rd argument is the connector_id (-1 = auto-select first available) */
-	lv_linux_drm_set_file(disp, device, -1);
-}
-
-void rga_test(void)
-{
-    printf("---------- RGA INFO START ----------\n");
-    // 尝试初始化 RGA (尽管新版本可能不需要，但作为检测很好)
-    int ret = c_RkRgaInit();
-    if (ret != 0) {
-        printf("RGA init failed! ret=%d\n", ret);
-    } else {
-        printf("RGA init success!\n");
-    }
-
-    // 打印版本信息（来自 im2d_common.h）
-	printf("%s", querystring(RGA_ALL));
-    c_RkRgaDeInit();
-    printf("----------- RGA INFO END -----------\n");
-}
 
 #if LV_USE_OS != LV_OS_FREERTOS
 
@@ -90,13 +63,14 @@ int main(int argc, char **argv)
 {
 	(void)argc; /*Unused*/
 	(void)argv; /*Unused*/
-	rga_test();
-	return 0;
+	// rga_test();
+	// return 0;
 	/*Initialize LVGL*/
 	lv_init();
 
 	/*Initialize the HAL (display, input devices, tick) for LVGL*/
-	drm_hal_init();
+	// 不开RGA加速平均帧率32FPS，开启RGA加速平均帧率45FPS
+	rk_drm_init();
 	// ? 需要确保 lv_conf.h 中 LV_USE_EVDEV 已启用
 	/* Initialize touch input */
 	lv_indev_t * indev = lv_evdev_create(LV_INDEV_TYPE_POINTER, "/dev/input/event1");
@@ -106,8 +80,8 @@ int main(int argc, char **argv)
 
 	/* Run the default demo */
 	/* To try a different demo or example, replace this with one of: */
-	// lv_demo_benchmark();
-	lv_demo_stress();
+	lv_demo_benchmark();
+	// lv_demo_stress();
 	// lv_demo_music();
 	// lv_demo_widgets();
 	/* - etc. */

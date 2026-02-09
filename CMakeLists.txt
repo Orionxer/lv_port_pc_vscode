@@ -33,6 +33,7 @@ include_directories(${PROJECT_SOURCE_DIR}/src/hal)
 set(SOURCES
     src/main.c
     src/mouse_cursor_icon.c
+    src/hal/rk_drm.c
 )
 
 # 创建可执行文件
