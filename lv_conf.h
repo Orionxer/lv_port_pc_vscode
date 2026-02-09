@@ -724,6 +724,9 @@
 #define LV_WIDGETS_HAS_DEFAULT_VALUE  1
 
 #define LV_USE_ANIMIMG    1
+/* API compatibility for generated code */
+#define lv_animimg_set_playback_time lv_animimg_set_reverse_duration
+#define lv_animimg_set_playback_delay lv_animimg_set_reverse_delay
 
 #define LV_USE_ARC        1
 
@@ -946,7 +949,7 @@
 #define LV_USE_LIBJPEG_TURBO 0
 
 /** GIF decoder library */
-#define LV_USE_GIF 0
+#define LV_USE_GIF 1
 #if LV_USE_GIF
     /** GIF decoder accelerate */
     #define LV_GIF_CACHE_DECODE_DATA 0

@@ -29,9 +29,9 @@
 #include "hal/hal.h"
 #include "hal/rk_drm.h"
 
-// #include "generated/gui_guider.h"
-// #include "generated/events_init.h"
-// lv_ui guider_ui;
+#include "generated/gui_guider.h"
+#include "generated/events_init.h"
+lv_ui guider_ui;
 
 /*********************
  *      DEFINES
@@ -56,6 +56,7 @@
 /**********************
  *   GLOBAL FUNCTIONS
  **********************/
+
 #if LV_USE_LINUX_DRM_RGA_HW_ROTATE
 
 static lv_indev_read_cb_t g_orig_read_cb = NULL;
@@ -125,13 +126,13 @@ int main(int argc, char **argv)
 
 	/* Run the default demo */
 	/* To try a different demo or example, replace this with one of: */
-	lv_demo_benchmark();
+	// lv_demo_benchmark();
 	// lv_demo_stress();
 	// lv_demo_music();
 	// lv_demo_widgets();
 	/* - etc. */
-	// setup_ui(&guider_ui);
-	// events_init(&guider_ui);
+	setup_ui(&guider_ui);
+	events_init(&guider_ui);
 	// lv_demo_widgets();
 
 	while (1)

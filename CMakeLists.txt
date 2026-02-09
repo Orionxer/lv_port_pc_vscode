@@ -30,10 +30,15 @@ include_directories(${PROJECT_SOURCE_DIR}/src/generated)
 include_directories(${PROJECT_SOURCE_DIR}/src/hal)
 
 # 收集源文件
+file(GLOB_RECURSE GENERATED_SOURCES "src/generated/*.c")
+file(GLOB_RECURSE CUSTOM_SOURCES "src/custom/*.c")
+
 set(SOURCES
     src/main.c
     src/mouse_cursor_icon.c
     src/hal/rk_drm.c
+    ${GENERATED_SOURCES}
+    ${CUSTOM_SOURCES}
 )
 
 # 创建可执行文件
