@@ -70,15 +70,14 @@ cd ../bin; ./main.exe
 ```
 
 ## 说明
-默认运行了Gui Guider的Demo: SmartAppliance, 其中`src`目录下的`custome`和`generated`目录为Gui Guider导出的代码，详细导出步骤与CMakeFile说明参考博客[LVGL9-移植](https://orionxer.github.io/blog/2025/10/03/lvgl-porting/)
+当前默认运行的是 `src/beken_generated` 目录下的 Beken UI Designer 导出页面，程序启动后会在 `main.c` 中调用 `beken_ui_init()` 加载首页。详细移植步骤与 CMake 说明参考博客[LVGL9-移植](https://orionxer.github.io/blog/2025/10/03/lvgl-porting/)
 
 `src`目录结构如下
 ```sh
 src/
-├── custom
+├── beken_generated
 ├── freertos
 ├── freertos_main.c
-├── generated
 ├── hal
 ├── main.c
 └── mouse_cursor_icon.c
@@ -109,4 +108,10 @@ make -j16
 ## 运行
 ```sh
 cd ../bin; ./main
+```
+
+## 一键运行脚本
+在Linux环境下，可以使用以下脚本一键编译并运行当前 `beken_generated` 版本的项目
+```sh
+./auto_build.sh
 ```
