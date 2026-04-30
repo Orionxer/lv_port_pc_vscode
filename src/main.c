@@ -65,6 +65,8 @@ int main(int argc, char **argv)
     sdl_hal_init(WATCH_SCREEN_WIDTH, WATCH_SCREEN_HEIGHT);
 
     /* Load the watch UI after the display backend is ready. */
+    init_watch_day(30);
+    init_watch_time(9, 23, 30);
     watch_ui_init();
 
     while (1)

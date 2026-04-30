@@ -10,6 +10,8 @@ extern "C" {
 #define WATCH_SCREEN_WIDTH  240
 #define WATCH_SCREEN_HEIGHT 320
 
+void init_watch_time(uint8_t hour, uint8_t minute, uint8_t second);
+void init_watch_day(uint8_t day);
 void watch_ui_init(void);
 
 #ifdef __cplusplus

@@ -6,6 +6,10 @@
 #define WATCH_FACE_SIZE 240
 #define WATCH_CENTER    (WATCH_FACE_SIZE / 2)
 
+#ifndef M_PI
+    #define M_PI 3.1415926f
+#endif
+
 typedef struct {
     lv_obj_t *screen;
     lv_obj_t *face;
@@ -13,15 +17,38 @@ typedef struct {
     lv_obj_t *minute_hand;
     lv_obj_t *second_hand;
     lv_obj_t *time_label;
+    lv_obj_t *day_label;
     lv_point_precise_t hour_points[2];
     lv_point_precise_t minute_points[2];
     lv_point_precise_t second_points[2];
     uint8_t hour;
     uint8_t minute;
     uint8_t second;
+    uint8_t day;
 } watch_ui_t;
 
-static watch_ui_t g_watch_ui;
+static watch_ui_t g_watch_ui = {
+    .hour = 10,
+    .minute = 10,
+    .second = 30,
+    .day = 29,
+};
+
+void init_watch_time(uint8_t hour, uint8_t minute, uint8_t second)
+{
+    g_watch_ui.hour = hour % 24;
+    g_watch_ui.minute = minute % 60;
+    g_watch_ui.second = second % 60;
+}
+
+void init_watch_day(uint8_t day)
+{
+    g_watch_ui.day = day < 1 ? 1 : (day > 31 ? 31 : day);
+
+    if(g_watch_ui.day_label != NULL) {
+        lv_label_set_text_fmt(g_watch_ui.day_label, "%u", (unsigned int)g_watch_ui.day);
+    }
+}
 
 static void style_plain_obj(lv_obj_t *obj);
 static void create_bezel(lv_obj_t *parent);
@@ -40,10 +67,6 @@ static int polar_y(int radius, int angle_deg);
 
 void watch_ui_init(void)
 {
-    g_watch_ui.hour = 10;
-    g_watch_ui.minute = 10;
-    g_watch_ui.second = 30;
-
     g_watch_ui.screen = lv_obj_create(NULL);
     lv_obj_remove_style_all(g_watch_ui.screen);
     lv_obj_set_size(g_watch_ui.screen, WATCH_SCREEN_WIDTH, WATCH_SCREEN_HEIGHT);
@@ -189,11 +212,11 @@ static void create_branding(lv_obj_t *parent)
     lv_obj_set_style_bg_color(date, lv_color_hex(0xf6f2dd), 0);
     lv_obj_set_style_radius(date, 3, 0);
 
-    lv_obj_t *date_label = lv_label_create(date);
-    lv_label_set_text(date_label, "29");
-    lv_obj_set_style_text_color(date_label, lv_color_hex(0x101010), 0);
-    lv_obj_set_style_text_font(date_label, &lv_font_montserrat_14, 0);
-    lv_obj_center(date_label);
+    g_watch_ui.day_label = lv_label_create(date);
+    lv_label_set_text_fmt(g_watch_ui.day_label, "%u", (unsigned int)g_watch_ui.day);
+    lv_obj_set_style_text_color(g_watch_ui.day_label, lv_color_hex(0x101010), 0);
+    lv_obj_set_style_text_font(g_watch_ui.day_label, &lv_font_montserrat_14, 0);
+    lv_obj_center(g_watch_ui.day_label);
 
     g_watch_ui.time_label = NULL;
 }
