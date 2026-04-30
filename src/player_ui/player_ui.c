@@ -1,26 +1,24 @@
 #include "player_ui.h"
+#include "player_audio.h"
 
 #include <stdint.h>
 
 #define INITIAL_PROGRESS_SEC 1
 #define INITIAL_VOLUME 62
-#define SONG_COUNT 8
+#define SONG_COUNT 5
 
 typedef struct {
     const char *title;
     const char *artist;
-    uint16_t duration_sec;
+    const char *pcm_path;
 } song_t;
 
 static const song_t g_songs[SONG_COUNT] = {
-    { "Midnight City", "M83", 226 },
-    { "Blinding Lights", "The Weeknd", 200 },
-    { "Bad Guy", "Billie Eilish", 194 },
-    { "Levitating", "Dua Lipa", 203 },
-    { "Shape of You", "Ed Sheeran", 234 },
-    { "Flowers", "Miley Cyrus", 200 },
-    { "Stay", "The Kid LAROI", 141 },
-    { "Anti-Hero", "Taylor Swift", 201 },
+    { "Life In The Fast Lane", "Eagles", "music/output/Eagles_Life_In_The_Fast_Lane.pcm" },
+    { "Hotel California Solo", "Eagles", "music/output/Hotel_California_Guitar_Solo.pcm" },
+    { "Don't Look Back In Anger", "Oasis", "music/output/Oasis_Dont_Look_Back_In_Anger.pcm" },
+    { "The Great Gig In The Sky", "Pink Floyd", "music/output/Pink_Floyd_The_Great_Gig_In_The_Sky.pcm" },
+    { "The Only Way I Can Love You", "Suede", "music/output/Suede_The_Only_Way_I_Can_Love_You.pcm" },
 };
 
 typedef struct {
@@ -63,6 +61,7 @@ static void close_volume_popup(void);
 static void update_song_view(void);
 static void update_song_selection(void);
 static void update_progress_view(uint16_t progress_sec, bool update_slider);
+static void load_current_song(bool play);
 static void update_volume_label(void);
 static void update_volume_icon(void);
 static void progress_timer_cb(lv_timer_t *timer);
@@ -86,7 +85,9 @@ void player_ui_init(void)
 
     create_left_panel(g_player_ui.screen);
     create_player_panel(g_player_ui.screen);
-    update_song_view();
+    player_audio_init();
+    player_audio_set_volume(g_player_ui.volume);
+    load_current_song(g_player_ui.playing);
 
     g_player_ui.progress_timer = lv_timer_create(progress_timer_cb, 1000, NULL);
     lv_screen_load(g_player_ui.screen);
@@ -319,10 +320,11 @@ static void close_volume_popup(void)
 static void update_song_view(void)
 {
     const song_t *song = &g_songs[g_player_ui.current_song];
+    uint32_t duration = player_audio_get_duration();
 
     lv_label_set_text(g_player_ui.title_label, song->title);
     lv_label_set_text(g_player_ui.artist_label, song->artist);
-    lv_slider_set_range(g_player_ui.progress_slider, 0, song->duration_sec);
+    lv_slider_set_range(g_player_ui.progress_slider, 0, duration);
     update_progress_view(g_player_ui.progress_sec, true);
     update_song_selection();
 }
@@ -339,7 +341,7 @@ static void update_song_selection(void)
 
 static void update_progress_view(uint16_t progress_sec, bool update_slider)
 {
-    uint16_t duration = g_songs[g_player_ui.current_song].duration_sec;
+    uint16_t duration = (uint16_t)player_audio_get_duration();
     uint16_t elapsed = progress_sec > duration ? duration : progress_sec;
     uint16_t remain = duration - elapsed;
 
@@ -352,6 +354,24 @@ static void update_progress_view(uint16_t progress_sec, bool update_slider)
     lv_label_set_text_fmt(g_player_ui.remain_label, "-%u:%02u",
                           (unsigned int)(remain / 60),
                           (unsigned int)(remain % 60));
+}
+
+static void load_current_song(bool play)
+{
+    const song_t *song = &g_songs[g_player_ui.current_song];
+
+    if(player_audio_load(song->pcm_path)) {
+        player_audio_set_volume(g_player_ui.volume);
+        player_audio_seek(g_player_ui.progress_sec);
+        player_audio_set_playing(play);
+    }
+    else {
+        g_player_ui.playing = false;
+        g_player_ui.progress_sec = 0;
+        lv_label_set_text(g_player_ui.play_label, LV_SYMBOL_PLAY);
+    }
+
+    update_song_view();
 }
 
 static void update_volume_label(void)
@@ -390,8 +410,13 @@ static void progress_timer_cb(lv_timer_t *timer)
         return;
     }
 
-    g_player_ui.progress_sec++;
-    if(g_player_ui.progress_sec > g_songs[g_player_ui.current_song].duration_sec) {
+    g_player_ui.progress_sec = (uint16_t)player_audio_get_position();
+    if(!player_audio_is_playing() && g_player_ui.progress_sec >= player_audio_get_duration()) {
+        g_player_ui.playing = false;
+        lv_label_set_text(g_player_ui.play_label, LV_SYMBOL_PLAY);
+    }
+
+    if(g_player_ui.progress_sec > player_audio_get_duration()) {
         g_player_ui.progress_sec = 0;
     }
 
@@ -410,7 +435,7 @@ static void song_event_cb(lv_event_t *event)
     g_player_ui.progress_sec = 0;
     g_player_ui.playing = true;
     lv_label_set_text(g_player_ui.play_label, LV_SYMBOL_PAUSE);
-    update_song_view();
+    load_current_song(true);
 }
 
 static void progress_slider_event_cb(lv_event_t *event)
@@ -427,6 +452,8 @@ static void progress_slider_event_cb(lv_event_t *event)
     }
     else if(code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
         g_player_ui.progress_sec = value;
+        player_audio_seek(g_player_ui.progress_sec);
+        player_audio_set_playing(g_player_ui.playing);
         g_player_ui.seeking = false;
         update_progress_view(g_player_ui.progress_sec, true);
     }
@@ -437,6 +464,14 @@ static void play_event_cb(lv_event_t *event)
     (void)event;
 
     g_player_ui.playing = !g_player_ui.playing;
+    if(g_player_ui.playing && player_audio_get_duration() > 0 &&
+       player_audio_get_position() >= player_audio_get_duration()) {
+        g_player_ui.progress_sec = 0;
+        player_audio_seek(0);
+        update_progress_view(g_player_ui.progress_sec, true);
+    }
+
+    player_audio_set_playing(g_player_ui.playing);
     lv_label_set_text(g_player_ui.play_label, g_player_ui.playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
 }
 
@@ -452,7 +487,9 @@ static void prev_event_cb(lv_event_t *event)
     }
 
     g_player_ui.progress_sec = 0;
-    update_song_view();
+    g_player_ui.playing = true;
+    lv_label_set_text(g_player_ui.play_label, LV_SYMBOL_PAUSE);
+    load_current_song(true);
 }
 
 static void next_event_cb(lv_event_t *event)
@@ -461,7 +498,9 @@ static void next_event_cb(lv_event_t *event)
 
     g_player_ui.current_song = (g_player_ui.current_song + 1) % SONG_COUNT;
     g_player_ui.progress_sec = 0;
-    update_song_view();
+    g_player_ui.playing = true;
+    lv_label_set_text(g_player_ui.play_label, LV_SYMBOL_PAUSE);
+    load_current_song(true);
 }
 
 static void volume_button_event_cb(lv_event_t *event)
@@ -483,5 +522,6 @@ static void volume_slider_event_cb(lv_event_t *event)
     lv_obj_t *slider = lv_event_get_target(event);
 
     g_player_ui.volume = (uint8_t)lv_slider_get_value(slider);
+    player_audio_set_volume(g_player_ui.volume);
     update_volume_label();
 }
