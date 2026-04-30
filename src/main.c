@@ -25,7 +25,7 @@
 #include <SDL.h>
 
 #include "hal/hal.h"
-#include "beken_ui.h"
+#include "watch_ui/watch_ui.h"
 
 
 
@@ -62,10 +62,10 @@ int main(int argc, char **argv)
     lv_init();
 
     /*Initialize the HAL (display, input devices, tick) for LVGL*/
-    sdl_hal_init(800, 480);
+    sdl_hal_init(WATCH_SCREEN_WIDTH, WATCH_SCREEN_HEIGHT);
 
-    /* Load the exported Beken UI after the display backend is ready. */
-    beken_ui_init();
+    /* Load the watch UI after the display backend is ready. */
+    watch_ui_init();
 
     while (1)
     {

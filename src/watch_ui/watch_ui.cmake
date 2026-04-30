@@ -1,0 +1,12 @@
+# watch_ui.cmake
+
+get_filename_component(WATCH_UI_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
+
+file(GLOB_RECURSE WATCH_UI_SOURCES
+    "${WATCH_UI_DIR}/*.c"
+)
+
+set(WATCH_UI_INCLUDE_DIRS "${WATCH_UI_DIR}")
+
+list(LENGTH WATCH_UI_SOURCES WATCH_UI_SOURCE_COUNT)
+message(STATUS "Watch UI: Found ${WATCH_UI_SOURCE_COUNT} source files")
