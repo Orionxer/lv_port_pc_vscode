@@ -1,0 +1,12 @@
+# player_ui.cmake
+
+get_filename_component(PLAYER_UI_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
+
+file(GLOB_RECURSE PLAYER_UI_SOURCES
+    "${PLAYER_UI_DIR}/*.c"
+)
+
+set(PLAYER_UI_INCLUDE_DIRS "${PLAYER_UI_DIR}")
+
+list(LENGTH PLAYER_UI_SOURCES PLAYER_UI_SOURCE_COUNT)
+message(STATUS "Player UI: Found ${PLAYER_UI_SOURCE_COUNT} source files")

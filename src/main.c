@@ -25,7 +25,7 @@
 #include <SDL.h>
 
 #include "hal/hal.h"
-#include "watch_ui/watch_ui.h"
+#include "player_ui/player_ui.h"
 
 
 
@@ -62,12 +62,10 @@ int main(int argc, char **argv)
     lv_init();
 
     /*Initialize the HAL (display, input devices, tick) for LVGL*/
-    sdl_hal_init(WATCH_SCREEN_WIDTH, WATCH_SCREEN_HEIGHT);
+    sdl_hal_init(PLAYER_SCREEN_WIDTH, PLAYER_SCREEN_HEIGHT);
 
-    /* Load the watch UI after the display backend is ready. */
-    init_watch_day(30);
-    init_watch_time(9, 23, 30);
-    watch_ui_init();
+    /* Load the player UI after the display backend is ready. */
+    player_ui_init();
 
     while (1)
     {
