@@ -7,3 +7,6 @@
 [submodule "FreeRTOS"]
 	path = FreeRTOS
 	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
+[submodule "lvgl_clock"]
+	path = lvgl_clock
+	url = https://github.com/weixuna/lvgl_clock
