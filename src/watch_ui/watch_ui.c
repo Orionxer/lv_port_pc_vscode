@@ -142,12 +142,12 @@ static void draw_watch_cb(lv_event_t *e)
     float min_dim = w < h ? w : h;
     float anim_t = g_watch_ui.t;
 
-    float radius_h = min_dim * 0.192f;
-    float radius_m = min_dim * 0.336f;
-    float radius_s = min_dim * 0.48f;
+    float radius_h = min_dim * (0.192f + (0.16f - 0.192f) * anim_t);
+    float radius_m = min_dim * (0.336f + (0.28f - 0.336f) * anim_t);
+    float radius_s = min_dim * (0.48f + (0.40f - 0.48f) * anim_t);
     float major_tick_l = 10.0f;
     float label_gap = 14.0f;
-    float cam_scale = 1.0f + 0.45f * anim_t;
+    float cam_scale = 1.0f + 0.32f * anim_t;
     float cam_x_w = -(radius_m * 1.3f) * anim_t;
     float wcx = scr_cx + cam_scale * cam_x_w;
     float wcy = scr_cy;
@@ -157,6 +157,21 @@ static void draw_watch_cb(lv_event_t *e)
     radius_s *= cam_scale;
     major_tick_l *= cam_scale;
     label_gap *= cam_scale;
+
+    if(anim_t > 0.01f) {
+        float locked_right = wcx + radius_s + 170.0f * cam_scale;
+        float max_right = (float)obj_area.x2 - 8.0f;
+        if(locked_right > max_right) {
+            wcx -= (locked_right - max_right) * anim_t;
+        }
+
+        wcx += 34.0f * anim_t;
+
+        float ring_right = wcx + radius_s;
+        if(ring_right > max_right) {
+            wcx -= ring_right - max_right;
+        }
+    }
 
     time_t now_t = time(NULL);
     struct tm *now = localtime(&now_t);
@@ -540,4 +555,5 @@ static void on_click_cb(lv_event_t *e)
 {
     (void)e;
     g_watch_ui.locked = !g_watch_ui.locked;
+    printf("Watch %s\n", g_watch_ui.locked ? "locked" : "unlocked");
 }
