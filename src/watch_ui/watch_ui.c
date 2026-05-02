@@ -1,26 +1,35 @@
 #include "watch_ui.h"
 
 #include <math.h>
-#include <stdint.h>
-
-#define WATCH_FACE_SIZE 240
-#define WATCH_CENTER    (WATCH_FACE_SIZE / 2)
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
 
 #ifndef M_PI
-    #define M_PI 3.1415926f
+    #define M_PI 3.14159265358979323846f
 #endif
+
+#define PI_F     ((float)M_PI)
+#define TWO_PI_F (2.0f * PI_F)
+
+#define COLOR_HOUR lv_color_make(0xff, 0xff, 0xff)
+#define COLOR_MIN  lv_color_make(0xb4, 0xff, 0x29)
+#define COLOR_SEC  lv_color_make(0xff, 0x5e, 0x00)
+#define COLOR_BG   lv_color_make(0x03, 0x03, 0x03)
+
+#define ANIM_SPEED 1.5f
 
 typedef struct {
     lv_obj_t *screen;
-    lv_obj_t *face;
-    lv_obj_t *hour_hand;
-    lv_obj_t *minute_hand;
-    lv_obj_t *second_hand;
-    lv_obj_t *time_label;
-    lv_obj_t *day_label;
-    lv_point_precise_t hour_points[2];
-    lv_point_precise_t minute_points[2];
-    lv_point_precise_t second_points[2];
+    lv_obj_t *watch_obj;
+    lv_timer_t *anim_timer;
+    bool locked;
+    float t_raw;
+    float t;
+    uint32_t last_ms;
+    uint32_t sec_tick_ref;
+    int last_tm_sec;
     uint8_t hour;
     uint8_t minute;
     uint8_t second;
@@ -28,11 +37,53 @@ typedef struct {
 } watch_ui_t;
 
 static watch_ui_t g_watch_ui = {
+    .last_tm_sec = -1,
     .hour = 10,
     .minute = 10,
     .second = 30,
     .day = 29,
 };
+
+static void draw_watch_cb(lv_event_t *e);
+static void on_click_cb(lv_event_t *e);
+static void anim_timer_cb(lv_timer_t *timer);
+static void draw_dial_layer(lv_layer_t *layer,
+                            float wcx,
+                            float wcy,
+                            float radius,
+                            float max_val,
+                            float value,
+                            lv_color_t color,
+                            float t,
+                            bool is_hour,
+                            float label_radius,
+                            int32_t hand_w);
+static void draw_line_f(lv_layer_t *layer,
+                        float x1,
+                        float y1,
+                        float x2,
+                        float y2,
+                        lv_color_t color,
+                        int32_t width,
+                        lv_opa_t opa);
+static void draw_dot_f(lv_layer_t *layer, float cx, float cy, float r, lv_color_t color, lv_opa_t opa);
+static float draw_label_left(lv_layer_t *layer,
+                             float tx,
+                             float ty_mid,
+                             const char *text,
+                             lv_color_t color,
+                             const lv_font_t *font,
+                             lv_opa_t opa);
+static void draw_label_center(lv_layer_t *layer,
+                              float tx,
+                              float ty,
+                              const char *text,
+                              lv_color_t color,
+                              const lv_font_t *font,
+                              lv_opa_t opa,
+                              int32_t area_w);
+static lv_opa_t spotlight_opa(float global_a, float t);
+static float ease_in_out_cubic(float x);
 
 void init_watch_time(uint8_t hour, uint8_t minute, uint8_t second)
 {
@@ -44,274 +95,449 @@ void init_watch_time(uint8_t hour, uint8_t minute, uint8_t second)
 void init_watch_day(uint8_t day)
 {
     g_watch_ui.day = day < 1 ? 1 : (day > 31 ? 31 : day);
-
-    if(g_watch_ui.day_label != NULL) {
-        lv_label_set_text_fmt(g_watch_ui.day_label, "%u", (unsigned int)g_watch_ui.day);
-    }
 }
-
-static void style_plain_obj(lv_obj_t *obj);
-static void create_bezel(lv_obj_t *parent);
-static void create_dial(lv_obj_t *parent);
-static void create_markers(lv_obj_t *parent);
-static void create_hour_numbers(lv_obj_t *parent);
-static void create_minute_numbers(lv_obj_t *parent);
-static void create_centered_label(lv_obj_t *parent, const char *text, int radius, int angle_deg,
-                                  const lv_font_t *font, lv_color_t color, int width, int height);
-static void create_branding(lv_obj_t *parent);
-static void create_hands(lv_obj_t *parent);
-static void update_hands(void);
-static void timer_cb(lv_timer_t *timer);
-static int polar_x(int radius, int angle_deg);
-static int polar_y(int radius, int angle_deg);
 
 void watch_ui_init(void)
 {
     g_watch_ui.screen = lv_obj_create(NULL);
     lv_obj_remove_style_all(g_watch_ui.screen);
     lv_obj_set_size(g_watch_ui.screen, WATCH_SCREEN_WIDTH, WATCH_SCREEN_HEIGHT);
-    lv_obj_set_style_bg_color(g_watch_ui.screen, lv_color_hex(0x050607), 0);
+    lv_obj_set_style_bg_color(g_watch_ui.screen, COLOR_BG, 0);
     lv_obj_set_style_bg_opa(g_watch_ui.screen, LV_OPA_COVER, 0);
 
-    g_watch_ui.face = lv_obj_create(g_watch_ui.screen);
-    style_plain_obj(g_watch_ui.face);
-    lv_obj_set_size(g_watch_ui.face, WATCH_FACE_SIZE, WATCH_FACE_SIZE);
-    lv_obj_align(g_watch_ui.face, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_set_style_bg_color(g_watch_ui.face, lv_color_hex(0x07110d), 0);
-    lv_obj_set_style_radius(g_watch_ui.face, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_clip_corner(g_watch_ui.face, true, 0);
+    g_watch_ui.watch_obj = lv_obj_create(g_watch_ui.screen);
+    lv_obj_remove_style_all(g_watch_ui.watch_obj);
+    lv_obj_set_size(g_watch_ui.watch_obj, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_pos(g_watch_ui.watch_obj, 0, 0);
+    lv_obj_set_style_bg_opa(g_watch_ui.watch_obj, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(g_watch_ui.watch_obj, 0, 0);
+    lv_obj_set_style_pad_all(g_watch_ui.watch_obj, 0, 0);
+    lv_obj_clear_flag(g_watch_ui.watch_obj, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(g_watch_ui.watch_obj, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(g_watch_ui.watch_obj, draw_watch_cb, LV_EVENT_DRAW_MAIN, NULL);
+    lv_obj_add_event_cb(g_watch_ui.watch_obj, on_click_cb, LV_EVENT_CLICKED, NULL);
 
-    create_bezel(g_watch_ui.face);
-    create_dial(g_watch_ui.face);
-    create_markers(g_watch_ui.face);
-    create_minute_numbers(g_watch_ui.face);
-    create_hour_numbers(g_watch_ui.face);
-    create_branding(g_watch_ui.face);
-    create_hands(g_watch_ui.face);
-    update_hands();
+    g_watch_ui.last_ms = lv_tick_get();
+    g_watch_ui.sec_tick_ref = g_watch_ui.last_ms;
+    g_watch_ui.anim_timer = lv_timer_create(anim_timer_cb, 16, NULL);
 
-    lv_timer_create(timer_cb, 1000, NULL);
     lv_screen_load(g_watch_ui.screen);
 }
 
-static void style_plain_obj(lv_obj_t *obj)
+static void draw_watch_cb(lv_event_t *e)
 {
-    lv_obj_remove_style_all(obj);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(obj, 0, 0);
-    lv_obj_set_style_pad_all(obj, 0, 0);
-    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-}
-
-static void create_bezel(lv_obj_t *parent)
-{
-    lv_obj_t *outer = lv_obj_create(parent);
-    style_plain_obj(outer);
-    lv_obj_set_size(outer, 236, 236);
-    lv_obj_center(outer);
-    lv_obj_set_style_radius(outer, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(outer, lv_color_hex(0x003b26), 0);
-    lv_obj_set_style_border_width(outer, 4, 0);
-    lv_obj_set_style_border_color(outer, lv_color_hex(0xd2c17a), 0);
-
-    lv_obj_t *inner = lv_obj_create(parent);
-    style_plain_obj(inner);
-    lv_obj_set_size(inner, 178, 178);
-    lv_obj_center(inner);
-    lv_obj_set_style_radius(inner, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(inner, lv_color_hex(0x030504), 0);
-    lv_obj_set_style_border_width(inner, 2, 0);
-    lv_obj_set_style_border_color(inner, lv_color_hex(0x173f2c), 0);
-}
-
-static void create_dial(lv_obj_t *parent)
-{
-    lv_obj_t *dial = lv_obj_create(parent);
-    style_plain_obj(dial);
-    lv_obj_set_size(dial, 188, 188);
-    lv_obj_center(dial);
-    lv_obj_set_style_radius(dial, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(dial, lv_color_hex(0x050505), 0);
-    lv_obj_set_style_border_width(dial, 1, 0);
-    lv_obj_set_style_border_color(dial, lv_color_hex(0x1e2d24), 0);
-}
-
-static void create_markers(lv_obj_t *parent)
-{
-    for(int minute = 0; minute < 60; minute++) {
-        int angle = minute * 6 - 90;
-        lv_obj_t *tick = lv_obj_create(parent);
-        style_plain_obj(tick);
-        lv_obj_set_size(tick, 2, 2);
-        lv_obj_set_pos(tick, polar_x(89, angle) - 1, polar_y(89, angle) - 1);
-        lv_obj_set_style_bg_color(tick, lv_color_hex(0xd6d6c8), 0);
-        lv_obj_set_style_radius(tick, LV_RADIUS_CIRCLE, 0);
+    lv_obj_t *obj = lv_event_get_target_obj(e);
+    lv_layer_t *layer = lv_event_get_layer(e);
+    if(layer == NULL) {
+        return;
     }
+
+    lv_area_t obj_area;
+    lv_obj_get_coords(obj, &obj_area);
+
+    float scr_cx = ((float)obj_area.x1 + (float)obj_area.x2) / 2.0f;
+    float scr_cy = ((float)obj_area.y1 + (float)obj_area.y2) / 2.0f;
+    float w = (float)lv_area_get_width(&obj_area);
+    float h = (float)lv_area_get_height(&obj_area);
+    float min_dim = w < h ? w : h;
+    float anim_t = g_watch_ui.t;
+
+    float radius_h = min_dim * 0.192f;
+    float radius_m = min_dim * 0.336f;
+    float radius_s = min_dim * 0.48f;
+    float major_tick_l = 10.0f;
+    float label_gap = 14.0f;
+    float cam_scale = 1.0f + 0.45f * anim_t;
+    float cam_x_w = -(radius_m * 1.3f) * anim_t;
+    float wcx = scr_cx + cam_scale * cam_x_w;
+    float wcy = scr_cy;
+
+    radius_h *= cam_scale;
+    radius_m *= cam_scale;
+    radius_s *= cam_scale;
+    major_tick_l *= cam_scale;
+    label_gap *= cam_scale;
+
+    time_t now_t = time(NULL);
+    struct tm *now = localtime(&now_t);
+    int tm_hour = now != NULL ? now->tm_hour : (int)g_watch_ui.hour;
+    int tm_min = now != NULL ? now->tm_min : (int)g_watch_ui.minute;
+    int tm_sec = now != NULL ? now->tm_sec : (int)g_watch_ui.second;
+
+    if(tm_sec != g_watch_ui.last_tm_sec) {
+        g_watch_ui.sec_tick_ref = lv_tick_get();
+        g_watch_ui.last_tm_sec = tm_sec;
+    }
+
+    float ms_frac = (float)(lv_tick_get() - g_watch_ui.sec_tick_ref) / 1000.0f;
+    if(ms_frac < 0.0f) {
+        ms_frac = 0.0f;
+    }
+    if(ms_frac > 1.0f) {
+        ms_frac = 1.0f;
+    }
+
+    float value_sec = (float)tm_sec + ms_frac;
+    float value_min = (float)tm_min + value_sec / 60.0f;
+    float value_hour = (float)(tm_hour % 12) + value_min / 60.0f;
+
+    draw_dial_layer(layer,
+                    wcx,
+                    wcy,
+                    radius_h,
+                    12.0f,
+                    value_hour,
+                    COLOR_HOUR,
+                    anim_t,
+                    true,
+                    radius_h - major_tick_l - label_gap,
+                    6);
+    draw_dial_layer(layer,
+                    wcx,
+                    wcy,
+                    radius_m,
+                    60.0f,
+                    value_min,
+                    COLOR_MIN,
+                    anim_t,
+                    false,
+                    (radius_h + radius_m - major_tick_l) / 2.0f,
+                    4);
+    draw_dial_layer(layer,
+                    wcx,
+                    wcy,
+                    radius_s,
+                    60.0f,
+                    value_sec,
+                    COLOR_SEC,
+                    anim_t,
+                    false,
+                    (radius_m + radius_s - major_tick_l) / 2.0f,
+                    2);
+
+    if(anim_t > 0.01f) {
+        lv_opa_t hud_opa = (lv_opa_t)(anim_t * anim_t * (float)LV_OPA_COVER);
+        lv_color_t white = lv_color_white();
+        float hud_x = wcx + radius_h - 20.0f * cam_scale;
+        float hud_w = radius_s - radius_h + 40.0f * cam_scale;
+        float hud_h = 36.0f * cam_scale;
+        float hud_y = wcy - hud_h / 2.0f;
+        float corner = 8.0f * cam_scale;
+
+        draw_line_f(layer, hud_x + corner, hud_y, hud_x, hud_y, white, 1, hud_opa);
+        draw_line_f(layer, hud_x, hud_y, hud_x, hud_y + corner, white, 1, hud_opa);
+        draw_line_f(layer, hud_x + corner, hud_y + hud_h, hud_x, hud_y + hud_h, white, 1, hud_opa);
+        draw_line_f(layer, hud_x, hud_y + hud_h, hud_x, hud_y + hud_h - corner, white, 1, hud_opa);
+        draw_line_f(layer, hud_x + hud_w - corner, hud_y, hud_x + hud_w, hud_y, white, 1, hud_opa);
+        draw_line_f(layer, hud_x + hud_w, hud_y, hud_x + hud_w, hud_y + corner, white, 1, hud_opa);
+        draw_line_f(layer, hud_x + hud_w - corner, hud_y + hud_h, hud_x + hud_w, hud_y + hud_h, white, 1, hud_opa);
+        draw_line_f(layer, hud_x + hud_w, hud_y + hud_h, hud_x + hud_w, hud_y + hud_h - corner, white, 1,
+                    hud_opa);
+
+        float text_start_x = hud_x + hud_w + 20.0f * cam_scale;
+        float text_end_x = text_start_x + 130.0f * cam_scale;
+        float laser_left = wcx - radius_h * 0.5f;
+
+        for(int i = 0; i < 14; i++) {
+            float fa = (float)i / 14.0f;
+            float fb = (float)(i + 1) / 14.0f;
+            float fc = (fa + fb) * 0.5f;
+            float bright;
+
+            if(fc < 0.3f) {
+                bright = fc / 0.3f * 0.8f;
+            }
+            else if(fc < 0.8f) {
+                bright = 0.8f;
+            }
+            else {
+                bright = (1.0f - fc) / 0.2f * 0.8f;
+            }
+
+            lv_opa_t line_opa = (lv_opa_t)(bright * anim_t * (float)LV_OPA_COVER);
+            draw_line_f(layer,
+                        laser_left + fa * (text_end_x - laser_left),
+                        wcy,
+                        laser_left + fb * (text_end_x - laser_left),
+                        wcy,
+                        white,
+                        1,
+                        line_opa);
+        }
+
+        const lv_font_t *big_font = &lv_font_montserrat_28;
+        float ty_mid = wcy - (float)big_font->line_height / 2.0f - 2.0f;
+        char str_h[4];
+        char str_m[4];
+        char str_s[4];
+        snprintf(str_h, sizeof(str_h), "%02d", tm_hour);
+        snprintf(str_m, sizeof(str_m), "%02d", tm_min);
+        snprintf(str_s, sizeof(str_s), "%02d", tm_sec);
+
+        float cur_x = text_start_x;
+        cur_x = draw_label_left(layer, cur_x, ty_mid, str_h, COLOR_HOUR, big_font, hud_opa) + 4.0f;
+        cur_x = draw_label_left(layer, cur_x, ty_mid, ":", white, big_font, (lv_opa_t)(0.45f * LV_OPA_COVER)) + 4.0f;
+        cur_x = draw_label_left(layer, cur_x, ty_mid, str_m, COLOR_MIN, big_font, hud_opa) + 4.0f;
+        cur_x = draw_label_left(layer, cur_x, ty_mid, ":", white, big_font, (lv_opa_t)(0.45f * LV_OPA_COVER)) + 4.0f;
+        draw_label_left(layer, cur_x, ty_mid, str_s, COLOR_SEC, big_font, hud_opa);
+    }
+
+    draw_dot_f(layer, wcx, wcy, 5.0f, COLOR_SEC, LV_OPA_COVER);
+    draw_dot_f(layer, wcx, wcy, 2.0f, lv_color_black(), LV_OPA_COVER);
 }
 
-static void create_hour_numbers(lv_obj_t *parent)
+static void draw_dial_layer(lv_layer_t *layer,
+                            float wcx,
+                            float wcy,
+                            float radius,
+                            float max_val,
+                            float value,
+                            lv_color_t color,
+                            float t,
+                            bool is_hour,
+                            float label_radius,
+                            int32_t hand_w)
 {
-    static const char *hour_text[] = {
-        "12", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"
+    float native_value_ang = value / max_val * TWO_PI_F - PI_F / 2.0f;
+    float dial_rot = -native_value_ang * t;
+    float hand_ang = native_value_ang * (1.0f - t);
+
+    for(int i = 0; i < 60; i++) {
+        bool is_major = (i % 5) == 0;
+        float native_a = (float)i / 60.0f * TWO_PI_F - PI_F / 2.0f;
+        float global_a = native_a + dial_rot;
+        float tick_l = is_major ? 10.0f : 4.0f;
+        int32_t tick_w = is_major ? 2 : 1;
+        lv_opa_t tick_opa = spotlight_opa(global_a, t);
+
+        draw_line_f(layer,
+                    wcx + radius * cosf(global_a),
+                    wcy + radius * sinf(global_a),
+                    wcx + (radius - tick_l) * cosf(global_a),
+                    wcy + (radius - tick_l) * sinf(global_a),
+                    color,
+                    tick_w,
+                    tick_opa);
+
+        if(is_major) {
+            float tx = wcx + label_radius * cosf(global_a);
+            float ty = wcy + label_radius * sinf(global_a);
+            char buf[8];
+
+            if(is_hour) {
+                int val = i / 5;
+                snprintf(buf, sizeof(buf), "%d", val == 0 ? 12 : val);
+            }
+            else {
+                snprintf(buf, sizeof(buf), "%02d", i);
+            }
+
+            draw_label_center(layer,
+                              tx,
+                              ty,
+                              buf,
+                              color,
+                              is_hour ? &lv_font_montserrat_16 : &lv_font_montserrat_14,
+                              tick_opa,
+                              is_hour ? 24 : 22);
+        }
+    }
+
+    draw_line_f(layer,
+                wcx,
+                wcy,
+                wcx + radius * cosf(hand_ang),
+                wcy + radius * sinf(hand_ang),
+                color,
+                hand_w,
+                LV_OPA_COVER);
+}
+
+static void draw_line_f(lv_layer_t *layer,
+                        float x1,
+                        float y1,
+                        float x2,
+                        float y2,
+                        lv_color_t color,
+                        int32_t width,
+                        lv_opa_t opa)
+{
+    if(opa < 2) {
+        return;
+    }
+
+    lv_draw_line_dsc_t dsc;
+    lv_draw_line_dsc_init(&dsc);
+    dsc.base.layer = layer;
+    dsc.color = color;
+    dsc.width = width;
+    dsc.round_start = 1;
+    dsc.round_end = 1;
+    dsc.opa = opa;
+    dsc.p1.x = roundf(x1);
+    dsc.p1.y = roundf(y1);
+    dsc.p2.x = roundf(x2);
+    dsc.p2.y = roundf(y2);
+    lv_draw_line(layer, &dsc);
+}
+
+static void draw_dot_f(lv_layer_t *layer, float cx, float cy, float r, lv_color_t color, lv_opa_t opa)
+{
+    if(opa < 2) {
+        return;
+    }
+
+    int32_t ir = (int32_t)roundf(r);
+    lv_area_t area = {
+        .x1 = (int32_t)roundf(cx) - ir,
+        .y1 = (int32_t)roundf(cy) - ir,
+        .x2 = (int32_t)roundf(cx) + ir,
+        .y2 = (int32_t)roundf(cy) + ir,
     };
-
-    for(int hour = 1; hour <= 12; hour++) {
-        int angle = hour * 30 - 90;
-        int text_index = hour % 12;
-        create_centered_label(parent, hour_text[text_index], 76, angle,
-                              &lv_font_montserrat_12, lv_color_hex(0xf4f1df), 22, 14);
-    }
+    lv_draw_rect_dsc_t dsc;
+    lv_draw_rect_dsc_init(&dsc);
+    dsc.base.layer = layer;
+    dsc.bg_color = color;
+    dsc.bg_opa = opa;
+    dsc.radius = LV_RADIUS_CIRCLE;
+    dsc.border_width = 0;
+    lv_draw_rect(layer, &dsc, &area);
 }
 
-static void create_minute_numbers(lv_obj_t *parent)
+static float draw_label_left(lv_layer_t *layer,
+                             float tx,
+                             float ty_mid,
+                             const char *text,
+                             lv_color_t color,
+                             const lv_font_t *font,
+                             lv_opa_t opa)
 {
-    static const char *minute_text[] = {
-        "5", "10", "15", "20", "25", "30", "35", "40", "45", "50", "55", "60"
+    if(opa < 2) {
+        return tx;
+    }
+
+    int32_t tw = lv_text_get_width(text, (uint32_t)strlen(text), font, 0);
+    int32_t th = font->line_height;
+    lv_area_t area = {
+        .x1 = (int32_t)roundf(tx),
+        .y1 = (int32_t)roundf(ty_mid - (float)th / 2.0f),
+        .x2 = (int32_t)roundf(tx + (float)tw + 2.0f),
+        .y2 = (int32_t)roundf(ty_mid + (float)th / 2.0f),
     };
+    lv_draw_label_dsc_t dsc;
+    lv_draw_label_dsc_init(&dsc);
+    dsc.base.layer = layer;
+    dsc.text = text;
+    dsc.text_length = (uint32_t)strlen(text);
+    dsc.text_local = true;
+    dsc.color = color;
+    dsc.font = font;
+    dsc.align = LV_TEXT_ALIGN_LEFT;
+    dsc.opa = opa;
+    lv_draw_label(layer, &dsc, &area);
 
-    for(int i = 0; i < 12; i++) {
-        int minute = (i + 1) * 5;
-        int angle = minute * 6 - 90;
-        create_centered_label(parent, minute_text[i], 103, angle,
-                              &lv_font_montserrat_12, lv_color_hex(0xd2c17a), 22, 14);
+    return tx + (float)tw;
+}
+
+static void draw_label_center(lv_layer_t *layer,
+                              float tx,
+                              float ty,
+                              const char *text,
+                              lv_color_t color,
+                              const lv_font_t *font,
+                              lv_opa_t opa,
+                              int32_t area_w)
+{
+    if(opa < 2) {
+        return;
     }
+
+    int32_t th = font->line_height;
+    lv_area_t area = {
+        .x1 = (int32_t)roundf(tx - (float)area_w / 2.0f),
+        .y1 = (int32_t)roundf(ty - (float)th / 2.0f),
+        .x2 = (int32_t)roundf(tx + (float)area_w / 2.0f),
+        .y2 = (int32_t)roundf(ty + (float)th / 2.0f),
+    };
+    lv_draw_label_dsc_t dsc;
+    lv_draw_label_dsc_init(&dsc);
+    dsc.base.layer = layer;
+    dsc.text = text;
+    dsc.text_length = (uint32_t)strlen(text);
+    dsc.text_local = true;
+    dsc.color = color;
+    dsc.font = font;
+    dsc.align = LV_TEXT_ALIGN_CENTER;
+    dsc.opa = opa;
+    lv_draw_label(layer, &dsc, &area);
 }
 
-static void create_centered_label(lv_obj_t *parent, const char *text, int radius, int angle_deg,
-                                  const lv_font_t *font, lv_color_t color, int width, int height)
+static lv_opa_t spotlight_opa(float global_a, float t)
 {
-    lv_obj_t *label = lv_label_create(parent);
-    lv_label_set_text(label, text);
-    lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
-    lv_obj_set_size(label, width, height);
-    lv_obj_set_pos(label, polar_x(radius, angle_deg) - width / 2, polar_y(radius, angle_deg) - height / 2);
-    lv_obj_set_style_text_color(label, color, 0);
-    lv_obj_set_style_text_font(label, font, 0);
-    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_clear_flag(label, LV_OBJ_FLAG_SCROLLABLE);
-}
-
-static void create_branding(lv_obj_t *parent)
-{
-    lv_obj_t *title = lv_label_create(parent);
-    lv_label_set_text(title, "SUBMARINER");
-    lv_obj_set_style_text_color(title, lv_color_hex(0xf4f1df), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_12, 0);
-    lv_obj_align(title, LV_ALIGN_CENTER, 0, -24);
-
-    lv_obj_t *depth = lv_label_create(parent);
-    lv_label_set_text(depth, "Fake Rolex");
-    lv_obj_set_style_text_color(depth, lv_color_hex(0xd2c17a), 0);
-    lv_obj_set_style_text_font(depth, &lv_font_montserrat_12, 0);
-    lv_obj_align(depth, LV_ALIGN_CENTER, 0, 31);
-
-    lv_obj_t *date = lv_obj_create(parent);
-    style_plain_obj(date);
-    lv_obj_set_size(date, 27, 20);
-    lv_obj_align(date, LV_ALIGN_RIGHT_MID, -56, 0);
-    lv_obj_set_style_bg_color(date, lv_color_hex(0xf6f2dd), 0);
-    lv_obj_set_style_radius(date, 3, 0);
-
-    g_watch_ui.day_label = lv_label_create(date);
-    lv_label_set_text_fmt(g_watch_ui.day_label, "%u", (unsigned int)g_watch_ui.day);
-    lv_obj_set_style_text_color(g_watch_ui.day_label, lv_color_hex(0x101010), 0);
-    lv_obj_set_style_text_font(g_watch_ui.day_label, &lv_font_montserrat_14, 0);
-    lv_obj_center(g_watch_ui.day_label);
-
-    g_watch_ui.time_label = NULL;
-}
-
-static void create_hands(lv_obj_t *parent)
-{
-    g_watch_ui.hour_hand = lv_line_create(parent);
-    lv_obj_remove_style_all(g_watch_ui.hour_hand);
-    lv_obj_set_size(g_watch_ui.hour_hand, WATCH_FACE_SIZE, WATCH_FACE_SIZE);
-    lv_obj_set_style_line_color(g_watch_ui.hour_hand, lv_color_hex(0xf4f1df), 0);
-    lv_obj_set_style_line_width(g_watch_ui.hour_hand, 7, 0);
-    lv_obj_set_style_line_rounded(g_watch_ui.hour_hand, true, 0);
-
-    g_watch_ui.minute_hand = lv_line_create(parent);
-    lv_obj_remove_style_all(g_watch_ui.minute_hand);
-    lv_obj_set_size(g_watch_ui.minute_hand, WATCH_FACE_SIZE, WATCH_FACE_SIZE);
-    lv_obj_set_style_line_color(g_watch_ui.minute_hand, lv_color_hex(0xf4f1df), 0);
-    lv_obj_set_style_line_width(g_watch_ui.minute_hand, 5, 0);
-    lv_obj_set_style_line_rounded(g_watch_ui.minute_hand, true, 0);
-
-    g_watch_ui.second_hand = lv_line_create(parent);
-    lv_obj_remove_style_all(g_watch_ui.second_hand);
-    lv_obj_set_size(g_watch_ui.second_hand, WATCH_FACE_SIZE, WATCH_FACE_SIZE);
-    lv_obj_set_style_line_color(g_watch_ui.second_hand, lv_color_hex(0xd42424), 0);
-    lv_obj_set_style_line_width(g_watch_ui.second_hand, 2, 0);
-    lv_obj_set_style_line_rounded(g_watch_ui.second_hand, true, 0);
-
-    lv_obj_t *cap = lv_obj_create(parent);
-    style_plain_obj(cap);
-    lv_obj_set_size(cap, 14, 14);
-    lv_obj_center(cap);
-    lv_obj_set_style_radius(cap, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(cap, lv_color_hex(0xd2c17a), 0);
-    lv_obj_set_style_border_width(cap, 3, 0);
-    lv_obj_set_style_border_color(cap, lv_color_hex(0xf4f1df), 0);
-}
-
-static void update_hands(void)
-{
-    int second_angle = g_watch_ui.second * 6 - 90;
-    int minute_angle = g_watch_ui.minute * 6 + g_watch_ui.second / 10 - 90;
-    int hour_angle = (g_watch_ui.hour % 12) * 30 + g_watch_ui.minute / 2 - 90;
-
-    g_watch_ui.hour_points[0].x = WATCH_CENTER;
-    g_watch_ui.hour_points[0].y = WATCH_CENTER;
-    g_watch_ui.hour_points[1].x = polar_x(50, hour_angle);
-    g_watch_ui.hour_points[1].y = polar_y(50, hour_angle);
-    lv_line_set_points(g_watch_ui.hour_hand, g_watch_ui.hour_points, 2);
-
-    g_watch_ui.minute_points[0].x = WATCH_CENTER;
-    g_watch_ui.minute_points[0].y = WATCH_CENTER;
-    g_watch_ui.minute_points[1].x = polar_x(70, minute_angle);
-    g_watch_ui.minute_points[1].y = polar_y(70, minute_angle);
-    lv_line_set_points(g_watch_ui.minute_hand, g_watch_ui.minute_points, 2);
-
-    g_watch_ui.second_points[0].x = polar_x(18, second_angle + 180);
-    g_watch_ui.second_points[0].y = polar_y(18, second_angle + 180);
-    g_watch_ui.second_points[1].x = polar_x(82, second_angle);
-    g_watch_ui.second_points[1].y = polar_y(82, second_angle);
-    lv_line_set_points(g_watch_ui.second_hand, g_watch_ui.second_points, 2);
-
-    if(g_watch_ui.time_label != NULL) {
-        lv_label_set_text_fmt(g_watch_ui.time_label, "%02u:%02u:%02u",
-                              (unsigned int)g_watch_ui.hour,
-                              (unsigned int)g_watch_ui.minute,
-                              (unsigned int)g_watch_ui.second);
+    if(t < 0.01f) {
+        return LV_OPA_COVER;
     }
+
+    float norm_a = fmodf(global_a, TWO_PI_F);
+    if(norm_a < 0.0f) {
+        norm_a += TWO_PI_F;
+    }
+    if(norm_a > PI_F) {
+        norm_a = TWO_PI_F - norm_a;
+    }
+
+    float falloff = fmaxf(0.0f, 1.0f - norm_a / (PI_F / 3.0f));
+    float focus_opa = (1.0f - t) + (0.15f + 0.85f * falloff) * t;
+    return (lv_opa_t)(focus_opa * (float)LV_OPA_COVER);
 }
 
-static void timer_cb(lv_timer_t *timer)
+static float ease_in_out_cubic(float x)
+{
+    if(x < 0.5f) {
+        return 4.0f * x * x * x;
+    }
+
+    float f = -2.0f * x + 2.0f;
+    return 1.0f - f * f * f / 2.0f;
+}
+
+static void anim_timer_cb(lv_timer_t *timer)
 {
     (void)timer;
 
-    g_watch_ui.second++;
-    if(g_watch_ui.second >= 60) {
-        g_watch_ui.second = 0;
-        g_watch_ui.minute++;
+    uint32_t now_ms = lv_tick_get();
+    uint32_t dt_raw = now_ms - g_watch_ui.last_ms;
+    g_watch_ui.last_ms = now_ms;
+
+    float dt_s = (float)dt_raw / 1000.0f;
+    if(dt_s > 0.05f) {
+        dt_s = 0.05f;
     }
 
-    if(g_watch_ui.minute >= 60) {
-        g_watch_ui.minute = 0;
-        g_watch_ui.hour = (g_watch_ui.hour + 1) % 24;
+    float target = g_watch_ui.locked ? 1.0f : 0.0f;
+    if(target > g_watch_ui.t_raw) {
+        g_watch_ui.t_raw += ANIM_SPEED * dt_s;
+    }
+    else {
+        g_watch_ui.t_raw -= ANIM_SPEED * dt_s;
     }
 
-    update_hands();
+    if(g_watch_ui.t_raw > 1.0f) {
+        g_watch_ui.t_raw = 1.0f;
+    }
+    if(g_watch_ui.t_raw < 0.0f) {
+        g_watch_ui.t_raw = 0.0f;
+    }
+
+    g_watch_ui.t = ease_in_out_cubic(g_watch_ui.t_raw);
+
+    if(g_watch_ui.watch_obj != NULL) {
+        lv_obj_invalidate(g_watch_ui.watch_obj);
+    }
 }
 
-static int polar_x(int radius, int angle_deg)
+static void on_click_cb(lv_event_t *e)
 {
-    double angle_rad = (double)angle_deg * M_PI / 180.0;
-    return WATCH_CENTER + (int)lrint(cos(angle_rad) * radius);
-}
-
-static int polar_y(int radius, int angle_deg)
-{
-    double angle_rad = (double)angle_deg * M_PI / 180.0;
-    return WATCH_CENTER + (int)lrint(sin(angle_rad) * radius);
+    (void)e;
+    g_watch_ui.locked = !g_watch_ui.locked;
 }
